@@ -1,0 +1,35 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "auto-deploy-cloudflare",
+	"main": "src/worker/index.ts",
+	"compatibility_date": "2026-07-08",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"directory": "./dist/client",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	},
+	"d1_databases": [
+		{
+			"binding": "APP_DB",
+			"database_name": "auto-deploy-cloudflare-db",
+			"database_id": "33397f17-8417-49eb-a44e-c426410f7f45",
+			"migrations_dir": "./migrations"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "APP_BUCKET",
+			"bucket_name": "auto-deploy-cloudflare-artifacts"
+		},
+		{
+			"bucket_name": "auto-deploy-cloudflare-artifacts",
+			"binding": "auto_deploy_cloudflare_artifacts"
+		}
+	],
+	"vars": {
+		"SESSION_TTL_SECONDS": "604800"
+	}
+}

@@ -1,0 +1,35 @@
+name: Direct Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_base_url:
+        description: Public URL of the Auto Deploy Cloudflare app
+        required: true
+        type: string
+      job_id:
+        description: Auto Deploy job id
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout runner repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run direct deploy
+        env:
+          APP_BASE_URL: ${{ inputs.app_base_url }}
+          JOB_ID: ${{ inputs.job_id }}
+          RUNNER_SHARED_SECRET: ${{ secrets.RUNNER_SHARED_SECRET }}
+        run: node scripts/github-actions-direct-deploy.mjs

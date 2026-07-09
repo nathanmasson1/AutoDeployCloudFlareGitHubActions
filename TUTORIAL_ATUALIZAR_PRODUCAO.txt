@@ -1,0 +1,270 @@
+TUTORIAL: ATUALIZAR PRODUCAO DEPOIS DE EDITAR O CODIGO LOCAL
+=============================================================
+
+Use este guia quando voce alterar o codigo no localhost e quiser mandar a nova
+versao para producao na Cloudflare.
+
+Projeto:
+C:\Users\NATHAN-PC\Desktop\AutoDeployCloudFlare-main
+
+
+1. Entre na pasta do projeto
+----------------------------
+
+No PowerShell:
+
+cd C:\Users\NATHAN-PC\Desktop\AutoDeployCloudFlare-main
+
+
+2. Edite e teste localmente
+---------------------------
+
+Se quiser rodar local:
+
+Terminal 1:
+
+.\node_modules\.bin\wrangler.cmd dev --ip 127.0.0.1 --port 8787
+
+Terminal 2:
+
+npm run dev
+
+Abra:
+
+http://127.0.0.1:5173/
+
+Importante:
+Alterar o codigo local NAO altera producao automaticamente.
+Producao so muda depois de rodar deploy.
+
+
+3. Validar antes de publicar
+----------------------------
+
+Antes de mandar para producao, rode:
+
+npm run build
+
+Esse comando faz:
+
+npm run build:client
+tsc --noEmit
+
+Se der erro, corrija antes de publicar.
+
+
+4. Publicar a nova versao
+-------------------------
+
+Depois que o build passar:
+
+npm run deploy
+
+Esse comando faz:
+
+npm run build
+wrangler deploy
+
+O deploy atualiza o Worker em producao e envia os arquivos do frontend gerados
+em dist/client.
+
+
+5. O que muda com npm run deploy
+--------------------------------
+
+Quando voce roda:
+
+npm run deploy
+
+Sao enviados para producao:
+
+- Codigo do Worker em src/worker
+- Codigo compartilhado em src/shared
+- Frontend React/Vite em src/client, compilado para dist/client
+- Configuracao do Worker no wrangler.jsonc
+
+Nao sao enviados automaticamente:
+
+- Dados locais do D1
+- Arquivo .dev.vars
+- Senhas digitadas localmente
+- Mudancas de banco sem migration remota
+
+
+6. Quando precisa rodar migration de novo
+-----------------------------------------
+
+Voce so precisa rodar migration remota quando criar ou alterar arquivos dentro
+da pasta:
+
+migrations
+
+Exemplo:
+
+migrations/0002_alguma_mudanca.sql
+
+Nesse caso, antes ou depois do deploy, rode:
+
+.\node_modules\.bin\wrangler.cmd d1 migrations apply auto-deploy-cloudflare-db --remote
+
+Se voce apenas editou React, CSS, Worker, textos, regras de deploy ou API sem
+alterar schema do banco, normalmente NAO precisa rodar migration.
+
+
+7. Quando precisa mexer em secrets
+----------------------------------
+
+Voce so precisa rodar secret put quando:
+
+- Criar um novo secret usado pelo codigo
+- Quiser trocar a senha do painel
+- Quiser trocar alguma chave sensivel
+
+Comandos:
+
+.\node_modules\.bin\wrangler.cmd secret put APP_ADMIN_SECRET
+
+.\node_modules\.bin\wrangler.cmd secret put TOKEN_ENCRYPTION_KEY
+
+Importante sobre TOKEN_ENCRYPTION_KEY:
+Nao troque essa chave depois que ja existem tokens salvos no painel, a menos que
+voce esteja pronto para cadastrar o token Cloudflare novamente.
+
+
+8. Quando precisa mexer em wrangler.jsonc
+-----------------------------------------
+
+Voce so precisa alterar wrangler.jsonc quando mudar:
+
+- Nome do Worker
+- Bindings D1/R2/assets
+- Database ID
+- Bucket R2
+- Variaveis nao secretas em vars
+- Compatibility date/flags
+
+Para o projeto atual, os bindings importantes sao:
+
+D1:
+
+"binding": "APP_DB"
+"database_name": "auto-deploy-cloudflare-db"
+"database_id": "33397f17-8417-49eb-a44e-c426410f7f45"
+
+R2:
+
+"binding": "APP_BUCKET"
+"bucket_name": "auto-deploy-cloudflare-artifacts"
+
+Assets:
+
+"binding": "ASSETS"
+"directory": "./dist/client"
+
+Nao renomeie APP_DB, APP_BUCKET ou ASSETS sem atualizar o codigo.
+
+
+9. Fluxo mais comum do dia a dia
+--------------------------------
+
+Para mudancas comuns de codigo:
+
+cd C:\Users\NATHAN-PC\Desktop\AutoDeployCloudFlare-main
+
+npm run build
+
+npm run deploy
+
+Depois abra a URL de producao e confira.
+
+
+10. Fluxo quando alterou banco
+------------------------------
+
+Se voce criou uma nova migration:
+
+cd C:\Users\NATHAN-PC\Desktop\AutoDeployCloudFlare-main
+
+npm run build
+
+.\node_modules\.bin\wrangler.cmd d1 migrations apply auto-deploy-cloudflare-db --remote
+
+npm run deploy
+
+
+11. Como verificar se publicou certo
+------------------------------------
+
+Depois do deploy, abra a URL de producao:
+
+https://auto-deploy-cloudflare.<seu-subdomain>.workers.dev
+
+Entre com a senha do painel.
+
+Confira:
+
+- A tela abre sem erro
+- Login funciona
+- Credenciais continuam salvas
+- Templates aparecem
+- Projetos publicados aparecem
+- Criar site continua funcionando
+
+
+12. Se a producao nao mudar depois do deploy
+--------------------------------------------
+
+Tente:
+
+1. Recarregar a pagina com Ctrl + F5.
+2. Conferir se o comando npm run deploy terminou com sucesso.
+3. Conferir se voce esta acessando a URL de producao correta.
+4. Rodar novamente:
+
+npm run deploy
+
+
+13. Se o deploy falhar
+----------------------
+
+Leia a mensagem do terminal.
+
+Erros comuns:
+
+- Build TypeScript falhou:
+  Corrija o erro e rode npm run build de novo.
+
+- D1 database_id errado:
+  Confira wrangler.jsonc.
+
+- Binding R2 errado:
+  Confira se o binding e APP_BUCKET.
+
+- Secret faltando:
+  Rode wrangler secret put para o secret indicado.
+
+- Login Cloudflare expirado:
+  Rode:
+
+  .\node_modules\.bin\wrangler.cmd login
+
+
+14. Resumo rapido
+-----------------
+
+Editei codigo local e quero publicar:
+
+npm run build
+npm run deploy
+
+Editei banco/migrations:
+
+npm run build
+.\node_modules\.bin\wrangler.cmd d1 migrations apply auto-deploy-cloudflare-db --remote
+npm run deploy
+
+Troquei senha/chave:
+
+.\node_modules\.bin\wrangler.cmd secret put NOME_DO_SECRET
+npm run deploy
+

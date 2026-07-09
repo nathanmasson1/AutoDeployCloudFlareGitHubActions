@@ -1,0 +1,373 @@
+TUTORIAL: SUBIR O PAINEL AUTO DEPLOY CLOUDFLARE EM PRODUCAO
+============================================================
+
+Este tutorial documenta a configuracao feita para publicar este projeto na
+Cloudflare em producao, conforme o passo a passo realizado no chat.
+
+Projeto local:
+C:\Users\NATHAN-PC\Desktop\AutoDeployCloudFlare-main
+
+
+1. Entrar na pasta do projeto
+-----------------------------
+
+No PowerShell:
+
+cd C:\Users\NATHAN-PC\Desktop\AutoDeployCloudFlare-main
+
+
+2. Fazer login no Wrangler
+--------------------------
+
+Comando:
+
+.\node_modules\.bin\wrangler.cmd login
+
+O navegador abre para login na Cloudflare.
+
+Se o Wrangler perguntar:
+
+Before you go, Wrangler detected AI coding agents...
+Would you like Wrangler to automatically install Cloudflare skills?
+
+Resposta usada:
+
+n
+
+Isso nao e necessario para publicar o Worker.
+
+
+3. Criar o banco D1 remoto
+--------------------------
+
+Comando:
+
+.\node_modules\.bin\wrangler.cmd d1 create auto-deploy-cloudflare-db
+
+Resultado obtido:
+
+database_name: auto-deploy-cloudflare-db
+database_id: 33397f17-8417-49eb-a44e-c426410f7f45
+
+Quando o Wrangler perguntou:
+
+Would you like Wrangler to add it on your behalf?
+
+Resposta usada:
+
+n
+
+Motivo: o projeto ja usa o binding correto APP_DB. Se o Wrangler adicionasse
+automaticamente, poderia criar outro binding com nome errado.
+
+
+4. Atualizar o arquivo wrangler.jsonc
+-------------------------------------
+
+Arquivo:
+
+C:\Users\NATHAN-PC\Desktop\AutoDeployCloudFlare-main\wrangler.jsonc
+
+A configuracao correta do D1 deve ficar assim:
+
+"d1_databases": [
+  {
+    "binding": "APP_DB",
+    "database_name": "auto-deploy-cloudflare-db",
+    "database_id": "33397f17-8417-49eb-a44e-c426410f7f45",
+    "migrations_dir": "./migrations"
+  }
+]
+
+Importante:
+O binding precisa ser APP_DB, porque o codigo usa context.env.APP_DB.
+
+
+5. Aplicar migrations no D1 remoto
+----------------------------------
+
+Comando:
+
+.\node_modules\.bin\wrangler.cmd d1 migrations apply auto-deploy-cloudflare-db --remote
+
+Quando perguntar:
+
+About to apply 1 migration(s)
+Your database may not be available to serve requests during the migration, continue?
+
+Resposta:
+
+Y
+
+Como o banco era novo, aplicar a migration e o passo correto.
+
+
+6. Criar o bucket R2 remoto
+---------------------------
+
+Comando:
+
+.\node_modules\.bin\wrangler.cmd r2 bucket create auto-deploy-cloudflare-artifacts
+
+Resultado obtido:
+
+Created bucket 'auto-deploy-cloudflare-artifacts'
+
+Quando o Wrangler perguntou:
+
+Would you like Wrangler to add it on your behalf?
+
+Foi respondido:
+
+yes
+
+Depois ele perguntou:
+
+What binding name would you like to use?
+
+Foi respondido:
+
+auto_deploy_cloudflare_artifacts
+
+Mesmo assim, foi conferido o wrangler.jsonc e ele ficou correto para o projeto:
+
+"r2_buckets": [
+  {
+    "binding": "APP_BUCKET",
+    "bucket_name": "auto-deploy-cloudflare-artifacts"
+  }
+]
+
+Importante:
+O binding precisa ser APP_BUCKET, porque o codigo usa context.env.APP_BUCKET.
+
+Quando o Wrangler perguntou:
+
+For local dev, do you want to connect to the remote resource instead of a local resource?
+
+Resposta recomendada:
+
+N
+
+Motivo: desenvolvimento local deve continuar usando recurso local. Producao usa
+o R2 remoto no deploy.
+
+
+7. Configurar o secret APP_ADMIN_SECRET
+---------------------------------------
+
+Comando:
+
+.\node_modules\.bin\wrangler.cmd secret put APP_ADMIN_SECRET
+
+Esse valor e a senha de login do painel em producao.
+
+Quando pedir:
+
+Enter a secret value:
+
+Digite ou cole uma senha forte.
+
+Quando o Wrangler perguntar:
+
+There doesn't seem to be a Worker called "auto-deploy-cloudflare".
+Do you want to create a new Worker with that name and add secrets to it?
+
+Resposta:
+
+Y
+
+Motivo: o Worker ainda nao tinha sido publicado pela primeira vez. E normal o
+Wrangler criar o Worker remoto para guardar o secret.
+
+
+8. Configurar o secret TOKEN_ENCRYPTION_KEY
+-------------------------------------------
+
+Comando:
+
+.\node_modules\.bin\wrangler.cmd secret put TOKEN_ENCRYPTION_KEY
+
+Esse valor criptografa o token Cloudflare salvo dentro do painel.
+
+Use uma chave longa, com pelo menos 16 caracteres. Recomendado: 32+ caracteres.
+
+Exemplo de formato:
+
+minha-chave-de-criptografia-super-forte-2026
+
+Importante:
+Nao troque essa chave depois que salvar tokens no painel, senao os tokens ja
+criptografados no D1 nao poderao ser descriptografados.
+
+
+9. Fazer o deploy
+-----------------
+
+Comando:
+
+npm run deploy
+
+Esse script faz:
+
+npm run build
+wrangler deploy
+
+O build gera os assets do Vite em:
+
+dist/client
+
+O Wrangler publica o Worker usando:
+
+src/worker/index.ts
+
+E tambem envia os assets definidos em:
+
+"assets": {
+  "directory": "./dist/client",
+  "binding": "ASSETS"
+}
+
+
+10. Abrir a URL de producao
+---------------------------
+
+No final do deploy, o Wrangler mostra uma URL parecida com:
+
+https://auto-deploy-cloudflare.<seu-subdomain>.workers.dev
+
+Abra essa URL no navegador.
+
+Entre usando a senha definida no secret:
+
+APP_ADMIN_SECRET
+
+
+11. Configurar o painel em producao
+-----------------------------------
+
+Dentro do painel publicado:
+
+1. Entrar em Credenciais.
+2. Clicar em Criar token pre-preenchido.
+3. Criar o token na Cloudflare.
+4. Copiar o token gerado.
+5. Colar o token no painel.
+6. Clicar em Salvar.
+7. Clicar em Listar contas.
+8. Escolher a conta Cloudflare correta.
+9. Clicar em Listar Build tokens.
+10. Selecionar o Build token valido.
+11. Salvar novamente.
+
+
+12. Permissoes esperadas no token Cloudflare
+--------------------------------------------
+
+O token criado para o painel deve ter permissoes semelhantes a:
+
+Account > Workers Builds Configuration > Edit
+Account > D1 > Edit
+Account > Workers R2 Storage > Edit
+Account > Workers KV Storage > Edit
+Account > Workers Scripts > Edit
+Account > Account Settings > Edit
+Zone > Zone > Read
+Zone > Zone > Edit
+Zone > DNS > Edit
+Zone > Workers Routes > Edit
+
+Tambem configurar:
+
+Account Resources: Include > sua conta Cloudflare
+Zone Resources: Include > All zones ou os dominios que serao usados
+
+
+13. Observacao sobre dados locais
+---------------------------------
+
+Os sites criados em localhost ficam no D1 local do Wrangler.
+
+O D1 de producao e outro banco, separado e inicialmente limpo.
+
+Portanto, os dados do localhost nao aparecem automaticamente em producao.
+
+
+14. Comandos principais em ordem resumida
+-----------------------------------------
+
+cd C:\Users\NATHAN-PC\Desktop\AutoDeployCloudFlare-main
+
+.\node_modules\.bin\wrangler.cmd login
+
+.\node_modules\.bin\wrangler.cmd d1 create auto-deploy-cloudflare-db
+
+Editar wrangler.jsonc e colocar:
+database_id = 33397f17-8417-49eb-a44e-c426410f7f45
+
+.\node_modules\.bin\wrangler.cmd d1 migrations apply auto-deploy-cloudflare-db --remote
+
+.\node_modules\.bin\wrangler.cmd r2 bucket create auto-deploy-cloudflare-artifacts
+
+.\node_modules\.bin\wrangler.cmd secret put APP_ADMIN_SECRET
+
+.\node_modules\.bin\wrangler.cmd secret put TOKEN_ENCRYPTION_KEY
+
+npm run deploy
+
+
+15. Checklist antes do deploy
+-----------------------------
+
+Confirmar no wrangler.jsonc:
+
+- name: auto-deploy-cloudflare
+- D1 binding: APP_DB
+- D1 database_name: auto-deploy-cloudflare-db
+- D1 database_id: 33397f17-8417-49eb-a44e-c426410f7f45
+- R2 binding: APP_BUCKET
+- R2 bucket_name: auto-deploy-cloudflare-artifacts
+- assets binding: ASSETS
+- assets directory: ./dist/client
+
+Confirmar secrets:
+
+- APP_ADMIN_SECRET configurado
+- TOKEN_ENCRYPTION_KEY configurado
+
+Confirmar migration:
+
+- 0001_initial.sql aplicada no D1 remoto
+
+
+16. Se der problema
+-------------------
+
+Se o painel abrir mas nao logar:
+
+- Confira se APP_ADMIN_SECRET foi criado no Worker correto.
+- Rode novamente:
+  .\node_modules\.bin\wrangler.cmd secret put APP_ADMIN_SECRET
+
+Se o painel salvar token mas depois der erro de descriptografia:
+
+- TOKEN_ENCRYPTION_KEY foi alterado depois de salvar token.
+- Solucao: usar a chave antiga ou salvar novamente o token no painel.
+
+Se o app nao encontrar o banco:
+
+- Confira se o binding do D1 e APP_DB.
+- Confira se o database_id esta correto no wrangler.jsonc.
+
+Se o app nao conseguir gravar logs/build artifacts:
+
+- Confira se o binding do R2 e APP_BUCKET.
+- Confira se o bucket auto-deploy-cloudflare-artifacts existe.
+
+Se o build do site criado pelo painel falhar:
+
+- Confira o token Cloudflare salvo em Credenciais.
+- Confira permissoes do token.
+- Confira se o GitHub App "Cloudflare Workers and Pages" esta autorizado no repositorio do template.
+- Confira se o Build token em Credenciais e valido.
+

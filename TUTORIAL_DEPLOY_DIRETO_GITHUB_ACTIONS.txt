@@ -1,0 +1,134 @@
+TUTORIAL - DEPLOY DIRETO COM GITHUB ACTIONS
+===========================================
+
+Objetivo
+--------
+Este modo remove a dependencia de Cloudflare Workers Builds.
+O cliente nao precisa autorizar GitHub App e nao precisa Workers Builds API token.
+
+O cliente precisa apenas:
+1. Conta Cloudflare
+2. Cloudflare API Token
+3. Plano pago Cloudflare quando o template exigir
+4. Dominio proprio, se for usar dominio customizado
+
+
+Como funciona
+-------------
+1. O painel cria o job de deploy.
+2. O Worker cria D1, R2, KV, Worker placeholder e secrets na conta Cloudflare do cliente.
+3. O Worker dispara a workflow GitHub Actions .github/workflows/direct-deploy.yml.
+4. A GitHub Action chama a rota segura /api/runner/jobs/{job_id}.
+5. A action baixa o template publico do GitHub.
+6. A action roda prepare, npm install, build e deploy direto na Cloudflare do cliente.
+7. A action avisa o painel quando terminou ou falhou.
+
+
+Arquivos adicionados/alterados
+------------------------------
+.github/workflows/direct-deploy.yml
+scripts/github-actions-direct-deploy.mjs
+src/worker/services/github-actions.ts
+src/worker/services/deployer.ts
+src/worker/app.ts
+src/worker/env.ts
+src/client/pages/SettingsPage.tsx
+src/client/pages/HomePage.tsx
+src/client/pages/SitesPage.tsx
+
+
+1) Criar segredo compartilhado do runner
+---------------------------------------
+Crie um texto aleatorio forte. Exemplo no PowerShell:
+
+[guid]::NewGuid().ToString() + [guid]::NewGuid().ToString()
+
+Guarde esse valor. Ele sera usado em dois lugares:
+- Cloudflare Worker secret: RUNNER_SHARED_SECRET
+- GitHub repository secret: RUNNER_SHARED_SECRET
+
+
+2) Configurar secrets no GitHub
+-------------------------------
+No repositorio do painel no GitHub:
+
+Settings > Secrets and variables > Actions > New repository secret
+
+Adicione:
+
+RUNNER_SHARED_SECRET
+
+Valor: o segredo criado no passo 1.
+
+
+3) Criar token GitHub para disparar a workflow
+----------------------------------------------
+Crie um token GitHub da sua conta, nao da conta do cliente.
+
+Para fine-grained token, use o repositorio deste painel e permita:
+- Actions: Read and write
+- Contents: Read-only
+
+Esse token sera salvo na Cloudflare como secret:
+
+.\node_modules\.bin\wrangler.cmd secret put GITHUB_ACTIONS_TOKEN
+
+
+4) Configurar secrets no Cloudflare Worker do painel
+----------------------------------------------------
+Rode dentro da pasta do projeto:
+
+.\node_modules\.bin\wrangler.cmd secret put GITHUB_ACTIONS_TOKEN
+.\node_modules\.bin\wrangler.cmd secret put RUNNER_SHARED_SECRET
+
+RUNNER_SHARED_SECRET deve ser exatamente o mesmo valor cadastrado no GitHub.
+
+
+5) Configurar variaveis do Worker
+---------------------------------
+No wrangler.jsonc ou no dashboard da Cloudflare, configure:
+
+APP_BASE_URL = URL publica do painel em producao
+GITHUB_ACTIONS_OWNER = usuario/organizacao dona do repositorio
+GITHUB_ACTIONS_REPO = nome do repositorio do painel
+GITHUB_ACTIONS_WORKFLOW = direct-deploy.yml
+GITHUB_ACTIONS_REF = main
+
+Exemplo:
+
+APP_BASE_URL = https://auto-deploy-cloudflare.seu-subdominio.workers.dev
+GITHUB_ACTIONS_OWNER = nathanmasson1
+GITHUB_ACTIONS_REPO = AutoDeployCloudFlare-main
+GITHUB_ACTIONS_WORKFLOW = direct-deploy.yml
+GITHUB_ACTIONS_REF = main
+
+
+6) Fazer deploy do painel
+-------------------------
+Depois de configurar secrets e variaveis:
+
+npm run build
+.\node_modules\.bin\wrangler.cmd deploy
+
+
+7) Testar
+---------
+1. Abra o painel em producao.
+2. Va em /credenciais.
+3. Cole a Cloudflare API Token do cliente.
+4. Confirme o plano pago quando necessario.
+5. Salve.
+6. Cadastre um template publico.
+7. Crie um site.
+8. Confira a aba Actions no GitHub para ver a workflow rodando.
+9. Confira a tela Sites no painel para acompanhar o status.
+
+
+Observacoes importantes
+-----------------------
+- O deploy direto so funciona em producao, porque o GitHub Actions precisa acessar a URL publica do painel.
+- Em localhost, a action nao consegue chamar http://127.0.0.1:5173.
+- O Cloudflare API Token do cliente nao e enviado como input da workflow.
+- A action busca o token pela rota segura do painel usando RUNNER_SHARED_SECRET.
+- Nao use endpoint interno/nao documentado da Cloudflare para criar Workers Builds token.
+- Neste modo novo, Workers Builds API token nao e necessario.
