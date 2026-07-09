@@ -1,3 +1,5 @@
+import type { UserRecord } from "../shared/types";
+
 export interface Env {
   APP_DB: D1Database;
   APP_BUCKET: R2Bucket;
@@ -16,4 +18,5 @@ export interface Env {
 
 export interface AppVariables {
   authenticated: boolean;
+  currentUser: UserRecord;
 }

@@ -4,7 +4,7 @@ TUTORIAL - DEPLOY DIRETO COM GITHUB ACTIONS
 Objetivo
 --------
 Este modo remove a dependencia de Cloudflare Workers Builds.
-O cliente nao precisa autorizar GitHub App e nao precisa Workers Builds API token.
+O cliente nao precisa autorizar GitHub App e nao precisa ter conta GitHub.
 
 O cliente precisa apenas:
 1. Conta Cloudflare
@@ -12,10 +12,15 @@ O cliente precisa apenas:
 3. Plano pago Cloudflare quando o template exigir
 4. Dominio proprio, se for usar dominio customizado
 
+O administrador do painel mantem:
+1. Um repositorio GitHub com a workflow GitHub Actions
+2. Um GitHub PAT para disparar a workflow
+3. Um RUNNER_SHARED_SECRET igual no Worker e no GitHub
+
 
 Como funciona
 -------------
-1. O painel cria o job de deploy.
+1. O usuario cria um site no painel.
 2. O Worker cria D1, R2, KV, Worker placeholder e secrets na conta Cloudflare do cliente.
 3. O Worker dispara a workflow GitHub Actions .github/workflows/direct-deploy.yml.
 4. A GitHub Action chama a rota segura /api/runner/jobs/{job_id}.
@@ -24,32 +29,31 @@ Como funciona
 7. A action avisa o painel quando terminou ou falhou.
 
 
-Arquivos adicionados/alterados
-------------------------------
+Arquivos principais
+-------------------
 .github/workflows/direct-deploy.yml
 scripts/github-actions-direct-deploy.mjs
 src/worker/services/github-actions.ts
 src/worker/services/deployer.ts
 src/worker/app.ts
 src/worker/env.ts
-src/client/pages/SettingsPage.tsx
-src/client/pages/HomePage.tsx
-src/client/pages/SitesPage.tsx
 
 
 1) Criar segredo compartilhado do runner
----------------------------------------
+----------------------------------------
 Crie um texto aleatorio forte. Exemplo no PowerShell:
 
-[guid]::NewGuid().ToString() + [guid]::NewGuid().ToString()
+node -e "console.log(crypto.randomUUID() + crypto.randomUUID())"
 
 Guarde esse valor. Ele sera usado em dois lugares:
 - Cloudflare Worker secret: RUNNER_SHARED_SECRET
 - GitHub repository secret: RUNNER_SHARED_SECRET
 
+Os dois valores precisam ser exatamente iguais.
 
-2) Configurar secrets no GitHub
--------------------------------
+
+2) Configurar secret no GitHub
+------------------------------
 No repositorio do painel no GitHub:
 
 Settings > Secrets and variables > Actions > New repository secret
@@ -63,15 +67,20 @@ Valor: o segredo criado no passo 1.
 
 3) Criar token GitHub para disparar a workflow
 ----------------------------------------------
-Crie um token GitHub da sua conta, nao da conta do cliente.
+Crie um token GitHub da conta administradora, nao da conta do cliente.
 
-Para fine-grained token, use o repositorio deste painel e permita:
+Para Fine-grained personal access token:
+- Repository access: apenas o repositorio do painel
 - Actions: Read and write
 - Contents: Read-only
 
 Esse token sera salvo na Cloudflare como secret:
 
 .\node_modules\.bin\wrangler.cmd secret put GITHUB_ACTIONS_TOKEN
+
+Importante:
+Nunca cole esse token em chat, print, issue ou documento publico.
+Se isso acontecer, revogue o token no GitHub e gere outro.
 
 
 4) Configurar secrets no Cloudflare Worker do painel
@@ -82,6 +91,16 @@ Rode dentro da pasta do projeto:
 .\node_modules\.bin\wrangler.cmd secret put RUNNER_SHARED_SECRET
 
 RUNNER_SHARED_SECRET deve ser exatamente o mesmo valor cadastrado no GitHub.
+
+Confirme apenas os nomes dos secrets, sem ver valores:
+
+.\node_modules\.bin\wrangler.cmd secret list
+
+Devem aparecer:
+- APP_ADMIN_SECRET
+- TOKEN_ENCRYPTION_KEY
+- GITHUB_ACTIONS_TOKEN
+- RUNNER_SHARED_SECRET
 
 
 5) Configurar variaveis do Worker
@@ -94,11 +113,11 @@ GITHUB_ACTIONS_REPO = nome do repositorio do painel
 GITHUB_ACTIONS_WORKFLOW = direct-deploy.yml
 GITHUB_ACTIONS_REF = main
 
-Exemplo:
+Exemplo atual:
 
-APP_BASE_URL = https://auto-deploy-cloudflare.seu-subdominio.workers.dev
+APP_BASE_URL = https://auto-deploy-cloudflare.nathan-aguiar-masson.workers.dev
 GITHUB_ACTIONS_OWNER = nathanmasson1
-GITHUB_ACTIONS_REPO = AutoDeployCloudFlare-main
+GITHUB_ACTIONS_REPO = AutoDeployCloudFlareGitHubActions
 GITHUB_ACTIONS_WORKFLOW = direct-deploy.yml
 GITHUB_ACTIONS_REF = main
 
@@ -111,24 +130,77 @@ npm run build
 .\node_modules\.bin\wrangler.cmd deploy
 
 
-7) Testar
----------
+7) Testar em producao
+---------------------
 1. Abra o painel em producao.
-2. Va em /credenciais.
-3. Cole a Cloudflare API Token do cliente.
-4. Confirme o plano pago quando necessario.
-5. Salve.
-6. Cadastre um template publico.
-7. Crie um site.
-8. Confira a aba Actions no GitHub para ver a workflow rodando.
-9. Confira a tela Sites no painel para acompanhar o status.
+2. Entre como admin.
+3. Va em Credenciais.
+4. Crie ou selecione um cliente.
+5. Cole a Cloudflare API Token do cliente.
+6. Confirme o plano pago quando necessario.
+7. Salve.
+8. Cadastre um template publico.
+9. Crie um site.
+10. Confira a aba Actions no GitHub para ver a workflow rodando.
+11. Confira a tela Sites no painel para acompanhar o status.
+
+
+8) Localhost e .dev.vars
+------------------------
+Em localhost, o frontend em http://127.0.0.1:5173 usa o Worker local em
+http://127.0.0.1:8787.
+
+O Worker local nao pega automaticamente os secrets remotos da Cloudflare.
+Para testar deploy pelo localhost, crie um arquivo .dev.vars na raiz:
+
+GITHUB_ACTIONS_TOKEN=COLE_SEU_GITHUB_PAT_AQUI
+RUNNER_SHARED_SECRET=COLE_O_MESMO_RUNNER_SHARED_SECRET_AQUI
+APP_ADMIN_SECRET=SUA_SENHA_ADMIN_LOCAL
+TOKEN_ENCRYPTION_KEY=SUA_CHAVE_DE_16_OU_MAIS_CARACTERES
+APP_BASE_URL=https://auto-deploy-cloudflare.nathan-aguiar-masson.workers.dev
+GITHUB_ACTIONS_OWNER=nathanmasson1
+GITHUB_ACTIONS_REPO=AutoDeployCloudFlareGitHubActions
+GITHUB_ACTIONS_WORKFLOW=direct-deploy.yml
+GITHUB_ACTIONS_REF=main
+SESSION_TTL_SECONDS=604800
+
+Depois reinicie o wrangler dev.
+
+Mesmo assim, o deploy real funciona melhor em producao, porque o GitHub Actions
+precisa chamar uma URL publica do painel.
+
+
+9) Erros comuns
+---------------
+ERRO: GITHUB_ACTIONS_TOKEN nao configurado para disparar GitHub Actions.
+
+Causas comuns:
+- Voce esta usando localhost e esqueceu o .dev.vars.
+- O secret foi criado em outro Worker/conta Cloudflare.
+- O secret foi criado vazio.
+- O Worker ainda nao foi redeployado depois da mudanca.
+
+Correcoes:
+
+.\node_modules\.bin\wrangler.cmd secret put GITHUB_ACTIONS_TOKEN
+.\node_modules\.bin\wrangler.cmd deploy
+
+
+ERRO: Runner nao autorizado.
+
+Causa:
+- RUNNER_SHARED_SECRET no GitHub e no Worker nao sao iguais.
+
+Correcoes:
+- Atualize RUNNER_SHARED_SECRET no Worker.
+- Atualize RUNNER_SHARED_SECRET no GitHub Actions.
+- Rode deploy do Worker.
 
 
 Observacoes importantes
 -----------------------
-- O deploy direto so funciona em producao, porque o GitHub Actions precisa acessar a URL publica do painel.
-- Em localhost, a action nao consegue chamar http://127.0.0.1:5173.
 - O Cloudflare API Token do cliente nao e enviado como input da workflow.
 - A action busca o token pela rota segura do painel usando RUNNER_SHARED_SECRET.
-- Nao use endpoint interno/nao documentado da Cloudflare para criar Workers Builds token.
-- Neste modo novo, Workers Builds API token nao e necessario.
+- Workers Builds API token nao e necessario.
+- GitHub App da Cloudflare nao e necessario.
+- Clientes nao precisam ter conta GitHub.

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import type { CloudflareAccount, PublicSettings } from "../../shared/types";
+import type { ClientRecord, ClientSummary, CloudflareAccount, PublicSettings, UserRecord, UserRole } from "../../shared/types";
 import { api } from "../api";
 import { Header } from "../components/Header";
 
@@ -30,11 +30,31 @@ interface TokenInspectionResponse {
 }
 
 interface SettingsPageProps {
+  currentUser: UserRecord;
+  clients: ClientSummary[];
+  users: UserRecord[];
+  selectedClientId: string;
   settings: PublicSettings | null;
+  onClientSelect: (clientId: string) => void;
+  onClientsChanged: (clientId: string) => Promise<void>;
   onSaved: () => Promise<void>;
 }
 
-export function SettingsPage({ settings, onSaved }: SettingsPageProps) {
+export function SettingsPage({ currentUser, clients, users, selectedClientId, settings, onClientSelect, onClientsChanged, onSaved }: SettingsPageProps) {
+  const selectedClient = clients.find((client) => client.id === selectedClientId) || clients[0] || null;
+  const canManageUsers = currentUser.role === "admin";
+  const [editingNewClient, setEditingNewClient] = useState(false);
+  const [clientName, setClientName] = useState(selectedClient?.name || "");
+  const [clientEmail, setClientEmail] = useState(selectedClient?.email || "");
+  const [clientSaving, setClientSaving] = useState(false);
+  const [editingUserId, setEditingUserId] = useState("");
+  const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
+  const [userPassword, setUserPassword] = useState("");
+  const [userRole, setUserRole] = useState<UserRole>("client");
+  const [userClientId, setUserClientId] = useState(selectedClientId);
+  const [userActive, setUserActive] = useState(true);
+  const [userSaving, setUserSaving] = useState(false);
   const [token, setToken] = useState("");
   const [accountId, setAccountId] = useState(settings?.accountId || "");
   const [accountName, setAccountName] = useState(settings?.accountName || "");
@@ -46,26 +66,28 @@ export function SettingsPage({ settings, onSaved }: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (editingNewClient) return;
+    setClientName(selectedClient?.name || "");
+    setClientEmail(selectedClient?.email || "");
+  }, [editingNewClient, selectedClient]);
+
+  useEffect(() => {
+    if (!editingUserId) setUserClientId(selectedClientId);
+  }, [editingUserId, selectedClientId]);
+
+  useEffect(() => {
+    setToken("");
+    setAccounts([]);
+    setInspectStatus("idle");
+    setNotice(null);
+  }, [selectedClientId]);
+
+  useEffect(() => {
     setAccountId(settings?.accountId || "");
     setAccountName(settings?.accountName || "");
     if (settings?.hasToken) setPreflightDone(true);
     setPaid(Boolean(settings?.cloudflarePaidPlan));
   }, [settings]);
-
-  useEffect(() => {
-    if (!preflightDone || !token.trim()) {
-      if (!token.trim()) setInspectStatus("idle");
-      return;
-    }
-
-    const tokenToInspect = token.trim();
-    const preferredAccountId = accountId;
-    const timeoutId = window.setTimeout(() => {
-      void inspectToken(tokenToInspect, preferredAccountId);
-    }, 700);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [token, preflightDone]);
 
   const hasUsableToken = token.trim() ? inspectStatus === "done" : Boolean(settings?.hasToken);
   const step1Done = preflightDone;
@@ -73,8 +95,87 @@ export function SettingsPage({ settings, onSaved }: SettingsPageProps) {
   const step3Done = step2Done && paid;
   const canSave = step3Done;
   const paidPlanUrl = accountId ? `https://dash.cloudflare.com/${accountId}/r2/plans` : "";
+  const activeClientName = selectedClient?.name || "Cliente padrao";
 
-  async function inspectToken(nextToken: string, preferredAccountId = "") {
+  function resetUserForm() {
+    setEditingUserId("");
+    setUserName("");
+    setUserEmail("");
+    setUserPassword("");
+    setUserRole("client");
+    setUserClientId(selectedClientId);
+    setUserActive(true);
+  }
+
+  function editUser(user: UserRecord) {
+    setEditingUserId(user.id);
+    setUserName(user.name);
+    setUserEmail(user.email);
+    setUserPassword("");
+    setUserRole(user.role);
+    setUserClientId(user.clientId);
+    setUserActive(user.active);
+  }
+
+  async function saveClient(event: FormEvent) {
+    event.preventDefault();
+    if (!canManageUsers) return;
+    const name = clientName.trim();
+    if (!name) {
+      setNotice({ kind: "warn", text: "Informe o nome do cliente antes de salvar." });
+      return;
+    }
+
+    setClientSaving(true);
+    setNotice(null);
+    try {
+      const data = await api<{ client: ClientRecord }>("/api/clients", {
+        method: "POST",
+        body: JSON.stringify({
+          id: editingNewClient ? undefined : selectedClientId,
+          name,
+          email: clientEmail.trim(),
+        }),
+      });
+      setEditingNewClient(false);
+      setNotice({ kind: "success", text: `Cliente ativo: ${data.client.name}.` });
+      await onClientsChanged(data.client.id);
+    } catch (error) {
+      setNotice({ kind: "alert", text: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setClientSaving(false);
+    }
+  }
+
+  async function saveUser(event: FormEvent) {
+    event.preventDefault();
+    if (!canManageUsers) return;
+    setUserSaving(true);
+    setNotice(null);
+    try {
+      const data = await api<{ user: UserRecord }>("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          id: editingUserId || undefined,
+          name: userName,
+          email: userEmail,
+          password: userPassword,
+          role: userRole,
+          clientId: userClientId,
+          active: userActive,
+        }),
+      });
+      setNotice({ kind: "success", text: `Usuario salvo: ${data.user.name}.` });
+      resetUserForm();
+      await onSaved();
+    } catch (error) {
+      setNotice({ kind: "alert", text: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setUserSaving(false);
+    }
+  }
+
+  const inspectToken = useCallback(async (nextToken: string, preferredAccountId = "") => {
     if (!nextToken.trim()) return;
     setInspectStatus("loading");
     setNotice(null);
@@ -102,17 +203,35 @@ export function SettingsPage({ settings, onSaved }: SettingsPageProps) {
       setInspectStatus("error");
       setNotice({ kind: "alert", text: error instanceof Error ? error.message : String(error) });
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!preflightDone || !token.trim()) {
+      if (!token.trim()) setInspectStatus("idle");
+      return;
+    }
+
+    const tokenToInspect = token.trim();
+    const preferredAccountId = accountId;
+    const timeoutId = window.setTimeout(() => {
+      void inspectToken(tokenToInspect, preferredAccountId);
+    }, 700);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [accountId, inspectToken, token, preflightDone]);
 
   function selectAccount(nextAccountId: string) {
     const selected = accounts.find((account) => account.id === nextAccountId);
     setAccountId(nextAccountId);
     setAccountName(selected?.name || "");
-    if (token.trim()) void inspectToken(token, nextAccountId);
   }
 
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (editingNewClient) {
+      setNotice({ kind: "warn", text: "Salve o novo cliente antes de gravar as credenciais Cloudflare." });
+      return;
+    }
     if (!canSave) {
       setNotice({ kind: "warn", text: "Conclua os passos 1, 2 e 3 antes de salvar." });
       return;
@@ -121,7 +240,7 @@ export function SettingsPage({ settings, onSaved }: SettingsPageProps) {
     setSaving(true);
     setNotice(null);
     try {
-      const data = await api<PublicSettings>("/api/settings/cloudflare", {
+      const data = await api<PublicSettings>(`/api/clients/${encodeURIComponent(selectedClientId)}/settings/cloudflare`, {
         method: "POST",
         body: JSON.stringify({
           cloudflareToken: token,
@@ -134,7 +253,7 @@ export function SettingsPage({ settings, onSaved }: SettingsPageProps) {
         }),
       });
       setToken("");
-      setNotice({ kind: "success", text: `Credenciais salvas para ${data.accountName || data.accountId}.` });
+      setNotice({ kind: "success", text: `Credenciais de ${activeClientName} salvas para ${data.accountName || data.accountId}.` });
       await onSaved();
     } catch (error) {
       setNotice({ kind: "alert", text: error instanceof Error ? error.message : String(error) });
@@ -145,7 +264,140 @@ export function SettingsPage({ settings, onSaved }: SettingsPageProps) {
 
   return (
     <section className="panel stack">
-      <Header eyebrow="Credenciais" title="Configurar Cloudflare" subtitle="Deploy direto por GitHub Actions: o cliente precisa apenas da conta Cloudflare e do API Token." />
+      <Header eyebrow="Credenciais" title="Configurar Cloudflare" subtitle="Cada cliente pode usar sua propria conta Cloudflare e API Token." />
+
+      {canManageUsers ? (
+        <>
+          <form className="client-config grid" onSubmit={saveClient}>
+            <label>
+              <span>Cliente ativo</span>
+              <select
+                value={selectedClientId}
+                disabled={editingNewClient}
+                onChange={(event) => {
+                  setEditingNewClient(false);
+                  onClientSelect(event.target.value);
+                }}
+              >
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+              <small>Sites e credenciais abaixo pertencem a este cliente.</small>
+            </label>
+
+            <div className="actions client-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setEditingNewClient(true);
+                  setClientName("");
+                  setClientEmail("");
+                }}
+              >
+                Novo cliente
+              </button>
+            </div>
+
+            <label>
+              <span>{editingNewClient ? "Nome do novo cliente" : "Nome do cliente"}</span>
+              <input value={clientName} onChange={(event) => setClientName(event.target.value)} placeholder="Cliente ou empresa" />
+            </label>
+
+            <label>
+              <span>Email opcional</span>
+              <input value={clientEmail} onChange={(event) => setClientEmail(event.target.value)} placeholder="cliente@email.com" />
+            </label>
+
+            <div className="actions wide">
+              <button type="submit" disabled={clientSaving}>
+                {clientSaving ? "Salvando..." : editingNewClient ? "Criar cliente" : "Salvar cliente"}
+              </button>
+            </div>
+          </form>
+
+          <form className="client-config grid" onSubmit={saveUser}>
+            <div className="wide">
+              <h3>Usuarios</h3>
+              <p className="hint compact">Admin gerencia tudo. Usuario cliente entra com email/senha e ve apenas o cliente vinculado.</p>
+            </div>
+
+            <label>
+              <span>Nome</span>
+              <input value={userName} onChange={(event) => setUserName(event.target.value)} placeholder="Nome do usuario" />
+            </label>
+
+            <label>
+              <span>Email</span>
+              <input type="email" value={userEmail} onChange={(event) => setUserEmail(event.target.value)} placeholder="usuario@email.com" />
+            </label>
+
+            <label>
+              <span>Senha</span>
+              <input
+                type="password"
+                value={userPassword}
+                onChange={(event) => setUserPassword(event.target.value)}
+                placeholder={editingUserId ? "Preencha somente para trocar" : "Senha inicial"}
+              />
+            </label>
+
+            <label>
+              <span>Tipo de acesso</span>
+              <select value={userRole} onChange={(event) => setUserRole(event.target.value as UserRole)}>
+                <option value="client">Cliente</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+
+            {userRole === "client" && (
+              <label>
+                <span>Cliente vinculado</span>
+                <select value={userClientId} onChange={(event) => setUserClientId(event.target.value)}>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <label className="check">
+              <input type="checkbox" checked={userActive} onChange={(event) => setUserActive(event.target.checked)} />
+              <span>Usuario ativo</span>
+            </label>
+
+            <div className="actions wide">
+              <button type="submit" disabled={userSaving}>
+                {userSaving ? "Salvando..." : editingUserId ? "Salvar usuario" : "Criar usuario"}
+              </button>
+              {editingUserId && <button type="button" className="secondary" onClick={resetUserForm}>Cancelar edicao</button>}
+            </div>
+
+            <div className="user-list wide">
+              {users.map((user) => (
+                <button type="button" className="user-row" key={user.id} onClick={() => editUser(user)}>
+                  <span>
+                    <strong>{user.name}</strong>
+                    <small>{user.email}</small>
+                  </span>
+                  <span>{user.role === "admin" ? "Admin" : clients.find((client) => client.id === user.clientId)?.name || "Cliente"}</span>
+                  <span>{user.active ? "Ativo" : "Inativo"}</span>
+                </button>
+              ))}
+            </div>
+          </form>
+        </>
+      ) : (
+        <div className="client-config">
+          <strong>Cliente ativo: {activeClientName}</strong>
+          <p className="hint compact">Seu usuario esta vinculado a este cliente. Voce so ve sites, jobs e credenciais desta conta.</p>
+        </div>
+      )}
 
       <form className="stack" onSubmit={save}>
         <article className={stepClass(true, step1Done)}>
@@ -168,7 +420,7 @@ export function SettingsPage({ settings, onSaved }: SettingsPageProps) {
           <div className="stack">
             <div>
               <h3>Crie um API Token na Cloudflare</h3>
-              <p>Clique no atalho, crie o token pre-preenchido e cole a Cloudflare API Token aqui. Ao colar, o painel busca automaticamente Account ID e Account name.</p>
+              <p>Clique no atalho, crie o token pre-preenchido e cole a Cloudflare API Token de {activeClientName}. Ao colar, o painel busca automaticamente Account ID e Account name.</p>
             </div>
 
             {!step1Done && <p className="hint compact">Complete o passo 1 para liberar esta etapa.</p>}
@@ -252,6 +504,8 @@ export function SettingsPage({ settings, onSaved }: SettingsPageProps) {
             {step3Done && (
               <>
                 <div className="review-list">
+                  <span>Cliente</span>
+                  <strong>{activeClientName}</strong>
                   <span>Cloudflare</span>
                   <strong>{preflightDone ? "Conta confirmada" : "Pendente"}</strong>
                   <span>Cloudflare API Token</span>

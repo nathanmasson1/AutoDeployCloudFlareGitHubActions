@@ -30,6 +30,11 @@
 		}
 	],
 	"vars": {
-		"SESSION_TTL_SECONDS": "604800"
-	}
+  "SESSION_TTL_SECONDS": "604800",
+  "APP_BASE_URL": "https://auto-deploy-cloudflare.nathan-aguiar-masson.workers.dev",
+  "GITHUB_ACTIONS_OWNER": "nathanmasson1",
+  "GITHUB_ACTIONS_REPO": "AutoDeployCloudFlareGitHubActions",
+  "GITHUB_ACTIONS_WORKFLOW": "direct-deploy.yml",
+  "GITHUB_ACTIONS_REF": "main"
+}
 }

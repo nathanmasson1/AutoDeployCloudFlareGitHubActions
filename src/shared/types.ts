@@ -32,6 +32,36 @@ export interface PublicSettings {
   cloudflarePaidPlan: boolean;
 }
 
+export interface ClientRecord {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClientSummary extends ClientRecord {
+  settings: PublicSettings;
+}
+
+export type UserRole = "admin" | "client";
+
+export interface UserRecord {
+  id: string;
+  clientId: string;
+  role: UserRole;
+  name: string;
+  email: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MeResponse {
+  authenticated: boolean;
+  user: UserRecord | null;
+}
+
 export interface GithubTemplateInfo {
   owner: string;
   repo: string;
@@ -50,6 +80,7 @@ export interface TemplateRecord extends GithubTemplateInfo {
 
 export interface SiteRecord {
   id: string;
+  clientId: string;
   status: SiteStatus;
   siteName: string;
   slug: string;
@@ -78,6 +109,7 @@ export interface SiteRecord {
 
 export interface JobRecord {
   id: string;
+  clientId: string;
   siteId: string;
   operation: string;
   status: JobStatus;
@@ -90,6 +122,7 @@ export interface JobRecord {
 }
 
 export interface DeployRequest {
+  clientId?: string;
   siteName: string;
   adminPassword: string;
   templateId: string;

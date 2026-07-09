@@ -1,12 +1,14 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
+import type { UserRecord } from "../../shared/types";
 import { api } from "../api";
 
 interface LoginProps {
-  onLogin: () => void;
+  onLogin: (user: UserRecord) => void;
 }
 
 export function Login({ onLogin }: LoginProps) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,8 +18,8 @@ export function Login({ onLogin }: LoginProps) {
     setLoading(true);
     setError("");
     try {
-      await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
-      onLogin();
+      const data = await api<{ user: UserRecord }>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+      onLogin(data.user);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -30,7 +32,8 @@ export function Login({ onLogin }: LoginProps) {
       <form className="login-card" onSubmit={submit}>
         <p className="eyebrow">Cloudflare Workers + D1 + R2</p>
         <h1>Auto Deploy Cloudflare</h1>
-        <p>Entre com a senha configurada em `APP_ADMIN_SECRET`.</p>
+        <p>Entre com email e senha. No primeiro acesso, use a senha `APP_ADMIN_SECRET` para criar o admin inicial.</p>
+        <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
         <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Senha do painel" required />
         {error && <div className="alert">{error}</div>}
         <button disabled={loading}>{loading ? "Entrando..." : "Entrar"}</button>

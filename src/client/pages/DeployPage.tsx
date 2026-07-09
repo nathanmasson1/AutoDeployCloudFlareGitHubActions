@@ -5,13 +5,15 @@ import { api } from "../api";
 import { Header } from "../components/Header";
 
 interface DeployPageProps {
+  clientId: string;
+  clientName: string;
   templates: TemplateRecord[];
   settings: PublicSettings | null;
   onJob: (jobId: string) => void;
   onRefresh: () => Promise<void>;
 }
 
-export function DeployPage({ templates, settings, onJob, onRefresh }: DeployPageProps) {
+export function DeployPage({ clientId, clientName, templates, settings, onJob, onRefresh }: DeployPageProps) {
   const [siteName, setSiteName] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -27,7 +29,7 @@ export function DeployPage({ templates, settings, onJob, onRefresh }: DeployPage
     setMessage("Provisionando recursos...");
     const data = await api<{ job: JobRecord }>("/api/sites/deploy", {
       method: "POST",
-      body: JSON.stringify({ siteName, adminPassword, templateId, customDomain }),
+      body: JSON.stringify({ clientId, siteName, adminPassword, templateId, customDomain }),
     });
     setAdminPassword("");
     setMessage("Job criado.");
@@ -38,6 +40,7 @@ export function DeployPage({ templates, settings, onJob, onRefresh }: DeployPage
   return (
     <section className="panel stack">
       <Header eyebrow="Novo deploy" title="Criar site" subtitle="Worker, D1, R2, KV, secrets, build remoto e dominio opcional." />
+      <div className="hint">Cliente ativo: <strong>{clientName || "Cliente padrao"}</strong></div>
       {!settings?.hasToken && <div className="warn">Cadastre o token Cloudflare antes de criar sites.</div>}
       <form className="grid" onSubmit={submit}>
         <label>

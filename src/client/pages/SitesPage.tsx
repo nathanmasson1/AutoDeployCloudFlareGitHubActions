@@ -5,12 +5,13 @@ import { Header } from "../components/Header";
 import { StatusBadge } from "../components/StatusBadge";
 
 interface SitesPageProps {
+  clientName: string;
   sites: SiteRecord[];
   onJob: (jobId: string) => void;
   onChanged: (refreshSites?: boolean) => Promise<void>;
 }
 
-export function SitesPage({ sites, onJob, onChanged }: SitesPageProps) {
+export function SitesPage({ clientName, sites, onJob, onChanged }: SitesPageProps) {
   useEffect(() => {
     if (!sites.some((site) => site.status === "building")) return;
     const refreshBuildingSites = () => onChanged(true).catch(() => undefined);
@@ -37,6 +38,7 @@ export function SitesPage({ sites, onJob, onChanged }: SitesPageProps) {
   return (
     <section className="panel stack">
       <Header eyebrow="Sites" title="Projetos publicados" subtitle="Acompanhe Workers, recursos e status dos deploys diretos." />
+      <div className="hint">Cliente ativo: <strong>{clientName || "Cliente padrao"}</strong></div>
       <div className="table">
         {sites.map((site) => (
           <div className="site-row" key={site.id}>
@@ -46,8 +48,8 @@ export function SitesPage({ sites, onJob, onChanged }: SitesPageProps) {
             </div>
             <StatusBadge status={site.status} />
             <div className="links">
-              {site.workersDevUrl && <a href={site.workersDevUrl} target="_blank">Site</a>}
-              {site.adminUrl && <a href={site.adminUrl} target="_blank">Admin</a>}
+              {site.workersDevUrl && <a href={site.workersDevUrl} target="_blank" rel="noreferrer">Site</a>}
+              {site.adminUrl && <a href={site.adminUrl} target="_blank" rel="noreferrer">Admin</a>}
             </div>
             {site.status === "failed" && <button className="secondary" onClick={() => retry(site)}>Reexecutar deploy</button>}
             <button className="danger" onClick={() => remove(site)}>Excluir</button>

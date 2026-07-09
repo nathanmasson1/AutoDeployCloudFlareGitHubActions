@@ -2,13 +2,14 @@ import type { PublicSettings, SiteRecord, TemplateRecord } from "../../shared/ty
 import type { Page } from "../app-types";
 
 interface HomePageProps {
+  clientName: string;
   settings: PublicSettings | null;
   templates: TemplateRecord[];
   sites: SiteRecord[];
   onNavigate: (page: Page) => void;
 }
 
-export function HomePage({ settings, templates, sites, onNavigate }: HomePageProps) {
+export function HomePage({ clientName, settings, templates, sites, onNavigate }: HomePageProps) {
   return (
     <div className="stack">
       <section className="hero-band">
@@ -20,6 +21,7 @@ export function HomePage({ settings, templates, sites, onNavigate }: HomePagePro
         <button onClick={() => onNavigate("deploy")}>Criar site</button>
       </section>
       <div className="metric-grid">
+        <Metric label="Cliente" value={clientName || "Cliente padrao"} />
         <Metric label="Token" value={settings?.hasToken ? settings.tokenMask : "Nao cadastrado"} />
         <Metric label="Templates" value={String(templates.length)} />
         <Metric label="Sites" value={String(sites.length)} />

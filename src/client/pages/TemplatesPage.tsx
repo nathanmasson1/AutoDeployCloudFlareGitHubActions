@@ -5,11 +5,12 @@ import { api } from "../api";
 import { Header } from "../components/Header";
 
 interface TemplatesPageProps {
+  canManage: boolean;
   templates: TemplateRecord[];
   onChanged: () => Promise<void>;
 }
 
-export function TemplatesPage({ templates, onChanged }: TemplatesPageProps) {
+export function TemplatesPage({ canManage, templates, onChanged }: TemplatesPageProps) {
   const [name, setName] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
   const [message, setMessage] = useState("");
@@ -51,17 +52,19 @@ export function TemplatesPage({ templates, onChanged }: TemplatesPageProps) {
       <div className="warn">
         Para usar <strong>nathanmasson1/template-cloudflare4</strong>, confirme que o commit com <code>scripts/autodeploy-prepare.mjs</code>, <code>scripts/autodeploy-deploy.mjs</code> e <code>scripts/prepare-cloudflare-assets.mjs</code> ja foi enviado ao GitHub.
       </div>
-      <form className="grid" onSubmit={submit}>
-        <label>
-          <span>Nome</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} required placeholder="Template noticias" />
-        </label>
-        <label className="wide">
-          <span>URL GitHub</span>
-          <input value={githubUrl} onChange={(event) => setGithubUrl(event.target.value)} required placeholder="https://github.com/usuario/template/tree/main/subpasta" />
-        </label>
-        <button className="wide" disabled={loading}>{loading ? "Validando..." : "Cadastrar template"}</button>
-      </form>
+      {canManage && (
+        <form className="grid" onSubmit={submit}>
+          <label>
+            <span>Nome</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} required placeholder="Template noticias" />
+          </label>
+          <label className="wide">
+            <span>URL GitHub</span>
+            <input value={githubUrl} onChange={(event) => setGithubUrl(event.target.value)} required placeholder="https://github.com/usuario/template/tree/main/subpasta" />
+          </label>
+          <button className="wide" disabled={loading}>{loading ? "Validando..." : "Cadastrar template"}</button>
+        </form>
+      )}
       {message && <div className="success">{message}</div>}
       {error && <div className="alert">{error}</div>}
       <div className="card-grid">
@@ -70,7 +73,7 @@ export function TemplatesPage({ templates, onChanged }: TemplatesPageProps) {
             <strong>{template.name}</strong>
             <span>{template.owner}/{template.repo}@{template.branch}</span>
             <small>{template.subdir || "/"}</small>
-            <button className="danger" onClick={() => remove(template.id)}>Remover</button>
+            {canManage && <button className="danger" onClick={() => remove(template.id)}>Remover</button>}
           </article>
         ))}
       </div>

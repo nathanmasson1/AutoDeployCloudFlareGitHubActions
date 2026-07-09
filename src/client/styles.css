@@ -112,6 +112,13 @@ code {
   margin: 0;
 }
 
+.sidebar-client {
+  color: #aebbd0;
+  font-weight: 700;
+  margin: 0.35rem 0 0;
+  overflow-wrap: anywhere;
+}
+
 .sidebar nav {
   display: grid;
   gap: 0.45rem;
@@ -187,7 +194,7 @@ code {
 .metric-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .metric {
@@ -208,6 +215,42 @@ code {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.client-config {
+  background: #f5f7fb;
+  border: 1px solid #d8e0ee;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.client-actions {
+  align-items: end;
+}
+
+.client-config h3 {
+  margin: 0;
+}
+
+.user-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.user-row {
+  align-items: center;
+  background: white;
+  border: 1px solid #d8e0ee;
+  color: #172033;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  text-align: left;
+}
+
+.user-row span:first-child {
+  display: grid;
+  gap: 0.2rem;
 }
 
 .setup-guide {

@@ -11,7 +11,9 @@ import {
 import type { Env } from "../env";
 import { decryptText } from "../lib/crypto";
 import {
+  DEFAULT_CLIENT_ID,
   addJobEvent,
+  getClient,
   getJob,
   getSettings,
   getSite,
@@ -29,8 +31,11 @@ function workersDevUrl(workerName: string, subdomain: string): string {
   return clean ? `https://${workerName}.${clean}.workers.dev` : "";
 }
 
-async function getCloudflareClient(env: Env): Promise<{ cf: CloudflareClient; settings: Awaited<ReturnType<typeof getSettings>>; token: string }> {
-  const settings = await getSettings(env);
+async function getCloudflareClient(
+  env: Env,
+  clientId = DEFAULT_CLIENT_ID,
+): Promise<{ cf: CloudflareClient; settings: Awaited<ReturnType<typeof getSettings>>; token: string }> {
+  const settings = await getSettings(env, clientId);
   if (!settings.tokenCipher || !settings.accountId) {
     throw new Error("Cadastre Cloudflare API Token e Account ID antes de criar sites.");
   }
@@ -50,6 +55,7 @@ export async function startDeploy(env: Env, payload: DeployRequest): Promise<Job
   const siteName = String(payload.siteName || "").trim();
   const adminPassword = String(payload.adminPassword || "").trim();
   const templateId = String(payload.templateId || "").trim();
+  const clientId = String(payload.clientId || DEFAULT_CLIENT_ID).trim() || DEFAULT_CLIENT_ID;
   const customDomain = normalizeDomain(payload.customDomain || "");
   if (!siteName || !adminPassword || !templateId) {
     throw new Error("Preencha nome do site, senha admin e template.");
@@ -60,6 +66,8 @@ export async function startDeploy(env: Env, payload: DeployRequest): Promise<Job
 
   const template = await getTemplate(env, templateId);
   if (!template) throw new Error("Template selecionado nao encontrado.");
+  const client = await getClient(env, clientId);
+  if (!client) throw new Error("Cliente selecionado nao encontrado.");
 
   const now = nowIso();
   const ids = namesForSite(siteName);
@@ -71,6 +79,7 @@ export async function startDeploy(env: Env, payload: DeployRequest): Promise<Job
 
   const job: Omit<JobRecord, "logs"> = {
     id: jobId,
+    clientId,
     siteId,
     operation: "deploy",
     status: "queued",
@@ -83,6 +92,7 @@ export async function startDeploy(env: Env, payload: DeployRequest): Promise<Job
 
   const site: SiteRecord = {
     id: siteId,
+    clientId,
     status: "draft",
     siteName,
     slug: ids.slug,
@@ -117,7 +127,7 @@ export async function startDeploy(env: Env, payload: DeployRequest): Promise<Job
     const git = await validateGithubTemplate(template.githubUrl);
     await addJobEvent(env, job.id, `Template OK: ${git.owner}/${git.repo}@${git.branch}`);
 
-    const { cf, token } = await getCloudflareClient(env);
+    const { cf, token } = await getCloudflareClient(env, clientId);
 
     await updateJob(env, job, "Criando ou reutilizando D1, R2 e KV");
     const [d1, r2, kv] = await Promise.all([cf.ensureD1(ids.d1Name), cf.ensureR2(ids.r2BucketName), cf.ensureKv(ids.kvName)]);
@@ -200,7 +210,7 @@ export async function refreshJob(env: Env, jobId: string): Promise<JobRecord | n
   if (!["deploy", "build"].includes(job.operation) && site.status !== "building") return job;
 
   try {
-    const { cf } = await getCloudflareClient(env);
+    const { cf } = await getCloudflareClient(env, site.clientId);
     const build = await cf.getBuild(site.buildTriggerId, site.buildId);
     const status = String(build?.status || "").toLowerCase();
     const outcome = String(build?.outcome || build?.build_outcome || "").toLowerCase();
@@ -246,6 +256,7 @@ export async function retryBuild(env: Env, siteId: string): Promise<JobRecord> {
   const now = nowIso();
   const job: Omit<JobRecord, "logs"> = {
     id: randomId("job_"),
+    clientId: site.clientId,
     siteId,
     operation: "build",
     status: "running",
@@ -293,6 +304,7 @@ export async function deleteSite(env: Env, siteId: string): Promise<JobRecord> {
   const now = nowIso();
   const job: Omit<JobRecord, "logs"> = {
     id: randomId("job_"),
+    clientId: site.clientId,
     siteId,
     operation: "delete",
     status: "running",
@@ -308,7 +320,7 @@ export async function deleteSite(env: Env, siteId: string): Promise<JobRecord> {
   await saveSite(env, site);
 
   try {
-    const { cf } = await getCloudflareClient(env);
+    const { cf } = await getCloudflareClient(env, site.clientId);
     const attempts = [
       ["Worker", () => cf.deleteWorker(site.workerName)],
       ["D1", () => cf.deleteD1(site.d1DatabaseId || site.d1Database)],
